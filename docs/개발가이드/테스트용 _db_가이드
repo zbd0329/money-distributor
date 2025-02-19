@@ -1,0 +1,105 @@
+# db 테이블 생성
+-- users 테이블 (회원 정보)
+CREATE TABLE users (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    username VARCHAR(50) UNIQUE NOT NULL,
+    password VARCHAR(255) NOT NULL,
+    email VARCHAR(100) UNIQUE NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_username (username),
+    INDEX idx_email (email)
+);
+
+-- user_wallet 테이블 (잔액 관리)
+CREATE TABLE user_wallet (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    user_id INT NOT NULL UNIQUE,
+    balance BIGINT NOT NULL DEFAULT 0,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id),
+    INDEX idx_user_id (user_id)
+);
+
+-- chat_rooms 테이블 (채팅방)
+CREATE TABLE chat_rooms (
+    id VARCHAR(36) PRIMARY KEY,
+    room_name VARCHAR(100),
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_id (id)
+);
+
+-- chat_room_members 테이블 (채팅방 멤버)
+CREATE TABLE chat_room_members (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    chat_room_id VARCHAR(36) NOT NULL,
+    user_id INT NOT NULL,
+    joined_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_chatroom_user (chat_room_id, user_id),
+    FOREIGN KEY (chat_room_id) REFERENCES chat_rooms(id),
+    FOREIGN KEY (user_id) REFERENCES users(id)
+);
+
+-- money_distribution 테이블 (뿌리기 기록)
+CREATE TABLE money_distribution (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    token CHAR(3) UNIQUE NOT NULL,
+    creator_id INT NOT NULL,
+    chat_room_id VARCHAR(36) NOT NULL,
+    total_amount BIGINT NOT NULL,
+    recipient_count INT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (creator_id) REFERENCES users(id),
+    FOREIGN KEY (chat_room_id) REFERENCES chat_rooms(id),
+    INDEX idx_token (token)
+);
+
+-- money_distribution_details 테이블 (뿌리기 상세 내역)
+CREATE TABLE money_distribution_details (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    distribution_id INT NOT NULL,
+    allocated_amount BIGINT NOT NULL,
+    receiver_id INT NULL,
+    claimed_at DATETIME NULL,
+    FOREIGN KEY (distribution_id) REFERENCES money_distribution(id),
+    FOREIGN KEY (receiver_id) REFERENCES users(id)
+);
+
+-- transaction_history 테이블 (거래 이력)
+CREATE TABLE transaction_history (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    transaction_type ENUM('CHARGE', 'SPRAY', 'RECEIVE') NOT NULL,
+    user_id INT NOT NULL,
+    amount BIGINT NOT NULL,
+    balance_after BIGINT NOT NULL,
+    related_user_id INT NULL,
+    token CHAR(3) NULL,
+    chat_room_id VARCHAR(36) NULL,
+    description VARCHAR(255),
+    target_details JSON NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    status ENUM('SUCCESS', 'FAILED', 'CANCELLED') NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id),
+    FOREIGN KEY (related_user_id) REFERENCES users(id),
+    FOREIGN KEY (chat_room_id) REFERENCES chat_rooms(id),
+    INDEX idx_user_id (user_id),
+    INDEX idx_transaction_type_created_at (transaction_type, created_at),
+    INDEX idx_token (token)
+);
+
+# 테스트 데이터 
+-- 테스트 사용자 생성
+INSERT INTO users (username, password, email) 
+VALUES ('testuser', 'hashedpassword', 'test@example.com');
+
+-- 사용자 지갑 생성 (10000원)
+INSERT INTO user_wallet (user_id, balance) 
+VALUES (1, 10000);
+
+-- 테스트 채팅방 생성
+INSERT INTO chat_rooms (id, room_name) 
+VALUES ('TEST-ROOM-1', '테스트방');
+
+-- 채팅방 멤버 추가
+INSERT INTO chat_room_members (chat_room_id, user_id) 
+VALUES ('TEST-ROOM-1', 1);
