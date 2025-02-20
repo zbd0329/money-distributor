@@ -5,6 +5,7 @@ from db.database import get_db
 from sqlalchemy.ext.asyncio import AsyncSession
 from api.spray.service import SprayService
 from api.spray.utils import distribute_amount, generate_token
+from datetime import datetime, timedelta
 
 # 비동기 테스트를 위한 설정
 pytestmark = pytest.mark.asyncio
@@ -98,3 +99,61 @@ def test_distribute_amount():
 # async def async_session():
 #     async for session in get_db():
 #         yield session
+
+async def test_get_spray_status_success(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    test_user: dict,
+    test_spray: MoneyDistribution
+):
+    # 테스트 데이터 설정
+    headers = {"X-USER-ID": str(test_user["id"])}
+    
+    # API 호출
+    response = await async_client.get(
+        f"/api/v1/spray/{test_spray.token}",
+        headers=headers
+    )
+    
+    # 응답 검증
+    assert response.status_code == 200
+    data = response.json()
+    assert "created_at" in data
+    assert data["total_amount"] == test_spray.total_amount
+    assert "total_received" in data
+    assert "details" in data
+
+async def test_get_spray_status_unauthorized(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    test_user: dict,
+    test_spray: MoneyDistribution
+):
+    # 다른 사용자의 ID로 테스트
+    headers = {"X-USER-ID": str(test_user["id"] + 1)}
+    
+    response = await async_client.get(
+        f"/api/v1/spray/{test_spray.token}",
+        headers=headers
+    )
+    
+    assert response.status_code == 403
+
+async def test_get_spray_status_expired(
+    async_client: AsyncClient,
+    db_session: AsyncSession,
+    test_user: dict,
+    test_spray: MoneyDistribution
+):
+    # 8일 전 뿌리기 건 생성
+    test_spray.created_at = datetime.utcnow() - timedelta(days=8)
+    await db_session.commit()
+    
+    headers = {"X-USER-ID": str(test_user["id"])}
+    
+    response = await async_client.get(
+        f"/api/v1/spray/{test_spray.token}",
+        headers=headers
+    )
+    
+    assert response.status_code == 400

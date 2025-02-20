@@ -101,44 +101,52 @@ class SprayService:
         Raises:
             ValueError: 받기 조건이 맞지 않을 경우 발생
         """
-        # 1. 채팅방 멤버 확인
-        member_query = select(ChatRoomMember).where(
-            ChatRoomMember.chat_room_id == room_id,
-            ChatRoomMember.user_id == user_id
-        )
-        member = await self.db.execute(member_query)
-        if not member.scalar_one_or_none():
-            raise ValueError("해당 대화방의 멤버가 아닙니다.")
+        try:
+            # 1. 채팅방 멤버 확인
+            member_query = select(ChatRoomMember).where(
+                ChatRoomMember.chat_room_id == room_id,
+                ChatRoomMember.user_id == user_id
+            )
+            member = await self.db.execute(member_query)
+            if not member.scalar_one_or_none():
+                raise ValueError("해당 대화방의 멤버가 아닙니다.")
 
-        # 2. 뿌리기 건 조회
-        distribution = await self._get_distribution(token, room_id)
-        if not distribution:
-            raise ValueError("유효하지 않은 뿌리기 토큰입니다.")
+            # 2. 뿌리기 건 조회
+            distribution = await self._get_distribution(token, room_id)
+            if not distribution:
+                raise ValueError("유효하지 않은 뿌리기 토큰입니다.")
 
-        # 3. 유효성 검증
-        await self._validate_receive_conditions(distribution, user_id)
+            # 3. 유효성 검증
+            await self._validate_receive_conditions(distribution, user_id)
 
-        # 4. 할당되지 않은 분배 내역 가져오기
-        detail = await self._get_available_distribution_detail(distribution.id)
-        if not detail:
-            raise ValueError("받을 수 있는 금액이 없습니다.")
+            # 4. 할당되지 않은 분배 내역 가져오기
+            detail = await self._get_available_distribution_detail(distribution.id)
+            if not detail:
+                raise ValueError("받을 수 있는 금액이 없습니다.")
 
-        # 5. 사용자 지갑 잔액 업데이트
-        await self._update_user_wallet(user_id, detail.allocated_amount)
+            # 5. 사용자 지갑 잔액 업데이트
+            await self._update_user_wallet(user_id, detail.allocated_amount)
 
-        # 6. 분배 내역 업데이트
-        await self._update_distribution_detail(detail.id, user_id)
+            # 6. 분배 내역 업데이트
+            await self._update_distribution_detail(detail.id, user_id)
 
-        # 7. 거래 이력 기록
-        await self._create_transaction_history(
-            user_id=user_id,
-            amount=detail.allocated_amount,
-            token=token,
-            room_id=room_id,
-            related_user_id=distribution.creator_id
-        )
+            # 7. 거래 이력 기록
+            await self._create_transaction_history(
+                user_id=user_id,
+                amount=detail.allocated_amount,
+                token=token,
+                room_id=room_id,
+                related_user_id=distribution.creator_id
+            )
 
-        return detail.allocated_amount
+            await self.db.commit()  # 최종 commit 추가
+            
+            return detail.allocated_amount
+
+        except Exception as e:
+            await self.db.rollback()
+            logger.error(f"Error in receive_money: {e}")
+            raise
 
     async def _get_distribution(self, token: str, room_id: str) -> MoneyDistribution:
         """뿌리기 정보를 조회합니다."""
@@ -194,13 +202,30 @@ class SprayService:
 
     async def _update_distribution_detail(self, detail_id: int, user_id: int):
         """분배 내역을 업데이트합니다."""
-        query = update(MoneyDistributionDetail).where(
-            MoneyDistributionDetail.id == detail_id
-        ).values(
-            receiver_id=user_id,
-            claimed_at=datetime.utcnow()
-        )
-        await self.db.execute(query)
+        try:
+            query = update(MoneyDistributionDetail).where(
+                MoneyDistributionDetail.id == detail_id
+            ).values(
+                receiver_id=user_id,
+                claimed_at=datetime.utcnow()
+            )
+            result = await self.db.execute(query)
+            await self.db.commit()  # commit 추가
+            
+            # 업데이트 확인을 위한 로깅
+            logger.debug(f"Updated distribution detail {detail_id} for user {user_id}")
+            
+            # 업데이트된 레코드 확인
+            check_query = select(MoneyDistributionDetail).where(
+                MoneyDistributionDetail.id == detail_id
+            )
+            updated_detail = (await self.db.execute(check_query)).scalar_one_or_none()
+            logger.debug(f"Updated detail record: {updated_detail}")
+            
+        except Exception as e:
+            logger.error(f"Error updating distribution detail: {e}")
+            await self.db.rollback()
+            raise
 
     async def _create_transaction_history(self, user_id: int, amount: int, 
                                         token: str, room_id: str, related_user_id: int):
@@ -223,3 +248,25 @@ class SprayService:
             status=TransactionStatus.SUCCESS
         )
         self.db.add(transaction) 
+
+    async def get_spray_by_token(self, token: str) -> MoneyDistribution:
+        """토큰으로 뿌리기 건을 조회합니다."""
+        query = select(MoneyDistribution).where(MoneyDistribution.token == token)
+        result = await self.db.execute(query)
+        return result.scalar_one_or_none()
+
+    async def get_spray_details(self, distribution_id: int) -> list[MoneyDistributionDetail]:
+        """뿌리기 건의 상세 내역을 조회합니다."""
+        query = select(MoneyDistributionDetail).where(
+            MoneyDistributionDetail.distribution_id == distribution_id
+        ).order_by(MoneyDistributionDetail.claimed_at)  # 받은 시간순으로 정렬
+        
+        result = await self.db.execute(query)
+        details = result.scalars().all()
+        
+        # 디버깅을 위한 로그 추가
+        logger.debug(f"Distribution details for ID {distribution_id}: {details}")
+        for detail in details:
+            logger.debug(f"Detail - amount: {detail.allocated_amount}, receiver: {detail.receiver_id}, claimed: {detail.claimed_at}")
+        
+        return details 
