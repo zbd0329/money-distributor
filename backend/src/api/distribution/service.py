@@ -41,35 +41,10 @@ class SprayService:
             raise HTTPException(status_code=400, detail="잔액이 부족합니다.")
 
         try:
-            # 3. 토큰 생성 및 검증
-            while True:
-                # Redis에 토큰 생성 및 저장 시도
-                token = self._token_service.generate_token()
-                
-                # MySQL에서 히스토리 확인
-                distribution_query = select(MoneyDistribution).where(
-                    MoneyDistribution.token == token
-                )
-                distribution = (await self.db.execute(distribution_query)).scalar_one_or_none()
-                
-                if distribution:
-                    # 만료되지 않은 토큰인 경우에만 다시 시도
-                    if datetime.utcnow() <= distribution.created_at + timedelta(minutes=10):
-                        self._token_service.release_token(token)
-                        continue
-                
-                # 토큰 유효성 최종 확인
-                if not self._token_service.validate_token(token):
-                    self._token_service.release_token(token)
-                    continue
-                    
-                # 유효한 토큰을 찾았으면 반복 종료
-                break
-
-            # 4. 금액 분배
-            amounts = distribute_amount(total_amount, recipient_count)
-
-            # 5. 뿌리기 건 생성
+            # Redis에서 토큰 생성 
+            token = self._token_service.generate_token()
+            
+            # 뿌리기 건 생성 (MySQL에 저장)
             distribution = MoneyDistribution(
                 token=token,
                 creator_id=user_id,
@@ -80,7 +55,10 @@ class SprayService:
             self.db.add(distribution)
             await self.db.flush()
 
-            # 6. 분배 내역 생성
+            # 3. 금액 분배
+            amounts = distribute_amount(total_amount, recipient_count)
+
+            # 4. 분배 내역 생성
             for amount in amounts:
                 detail = MoneyDistributionDetail(
                     distribution_id=distribution.id,
@@ -88,7 +66,7 @@ class SprayService:
                 )
                 self.db.add(detail)
 
-            # 7. 거래 내역 기록 및 잔액 차감
+            # 5. 거래 내역 기록 및 잔액 차감
             wallet.balance -= total_amount
             
             transaction = TransactionHistory(
@@ -108,9 +86,6 @@ class SprayService:
             return token
 
         except Exception as e:
-            # 에러 발생시에만 토큰 해제
-            if 'token' in locals():
-                self._token_service.release_token(token)
             await self.db.rollback()
             logger.error(f"Error in create_spray: {e}")
             raise HTTPException(status_code=500, detail="뿌리기 생성에 실패했습니다.")
@@ -278,9 +253,22 @@ class SprayService:
 
     async def get_spray_by_token(self, token: str) -> MoneyDistribution:
         """토큰으로 뿌리기 건을 조회합니다."""
+        # Redis에서 토큰 유효성 먼저 확인
+        if not self._token_service.validate_token(token):
+            raise ValueError("유효하지 않은 토큰입니다.")
+
+        # MySQL에서 상세 정보 조회
         query = select(MoneyDistribution).where(MoneyDistribution.token == token)
-        result = await self.db.execute(query)
-        return result.scalar_one_or_none()
+        distribution = (await self.db.execute(query)).scalar_one_or_none()
+
+        if not distribution:
+            raise ValueError("존재하지 않는 토큰입니다.")
+
+        # 7일 이내 조회 가능 확인
+        if datetime.utcnow() > distribution.created_at + timedelta(days=7):
+            raise ValueError("조회 가능 기간이 만료되었습니다.")
+
+        return distribution
 
     async def get_spray_details(self, distribution_id: int) -> list[MoneyDistributionDetail]:
         """뿌리기 건의 상세 내역을 조회합니다."""

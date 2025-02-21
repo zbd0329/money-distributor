@@ -27,12 +27,28 @@ class TokenService:
 
             try:
                 if not self._redis.ping():
-                    raise redis.ConnectionError("Redis connection failed")
+                    raise redis.ConnectionError("Redis connection failed, 현재 서비스를 이용할 수 없습니다. 관리자에게 문의하세요.")
 
                 with self._redis.pipeline() as pipe:
                     try:
                         pipe.watch(self._used_tokens_key, token_key)
-                        if not pipe.sismember(self._used_tokens_key, token):
+                        
+                        # Redis에서 중복 토큰 체크
+                        if pipe.sismember(self._used_tokens_key, token):
+                            token_ttl = self._redis.ttl(token_key)
+                            if token_ttl > 0:  # 유효한 토큰이면 새로운 토큰 생성
+                                continue
+                            elif token_ttl == -2:  # 만료된 토큰이면 상태만 변경하여 재사용
+                                pipe.multi()
+                                pipe.hset(token_key, mapping={
+                                    "created_at": datetime.now().isoformat(),
+                                    "status": "active"
+                                })
+                                expiry_seconds = int(timedelta(days=self._token_expiry_days).total_seconds())
+                                pipe.expire(token_key, expiry_seconds)
+                                pipe.execute()
+                                return token
+                        else:  # 새로운 토큰인 경우에만 저장
                             pipe.multi()
                             pipe.sadd(self._used_tokens_key, token)
                             pipe.hset(token_key, mapping={
@@ -43,20 +59,7 @@ class TokenService:
                             pipe.expire(token_key, expiry_seconds)
                             pipe.expire(self._used_tokens_key, expiry_seconds + 60)
                             pipe.execute()
-
-                            # TTL 설정 확인 및 재시도
-                            max_retries = 3
-                            for retry in range(max_retries):
-                                token_ttl = self._redis.ttl(token_key)
-                                if token_ttl == -1 or token_ttl == -2:  # TTL이 설정되지 않았거나 키가 없는 경우
-                                    self._redis.expire(token_key, expiry_seconds)
-                                    self._redis.expire(self._used_tokens_key, expiry_seconds + 60)
-                                else:
-                                    break
-                            else:  # max_retries 횟수만큼 시도했지만 실패
-                                self.release_token(token)
-                                continue
-
+                            
                             return token
 
                     except redis.WatchError:
@@ -89,26 +92,3 @@ class TokenService:
         """토큰 만료 여부 확인"""
         return datetime.now() - created_at >= timedelta(days=self._token_expiry_days)
 
-    def release_token(self, token: str) -> None:
-        """토큰 해제 (재사용 가능하도록)"""
-        self._redis.srem(self._used_tokens_key, token)
-        self._redis.delete(f"{self._token_prefix}{token}")
-
-    def get_expiry_date(self, token: str) -> Optional[datetime]:
-        """토큰 만료일 계산"""
-        token_key = f"{self._token_prefix}{token}"
-        token_data = self._redis.hgetall(token_key)
-        if not token_data:
-            return None
-        
-        created_at = datetime.fromisoformat(token_data["created_at"])
-        return created_at + timedelta(days=self._token_expiry_days)
-
-    def get_remaining_time(self, token: str) -> Optional[timedelta]:
-        """토큰의 남은 유효 시간 반환"""
-        expiry_date = self.get_expiry_date(token)
-        if not expiry_date:
-            return None
-        
-        remaining = expiry_date - datetime.now()
-        return remaining if remaining.total_seconds() > 0 else None 
