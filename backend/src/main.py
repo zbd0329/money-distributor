@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from .core.config import settings
 from fastapi.middleware.cors import CORSMiddleware
-from .api.spray.controller import router as spray_router
+from .api.distribution.router import router as distribution_router
 from .db.database import engine, Base
 import logging
 
@@ -25,7 +25,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(spray_router, prefix="/api/v1")
+app.include_router(distribution_router, prefix="/api/v1")
 
 @app.on_event("startup")
 async def startup():

@@ -1,6 +1,5 @@
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import declarative_base, sessionmaker
-from sqlalchemy.dialects.mysql import UUID
 from uuid import uuid4
 from ..core.config import settings
 

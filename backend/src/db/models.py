@@ -15,7 +15,6 @@ from sqlalchemy.orm import relationship
 from .database import Base, generate_uuid
 import enum
 from uuid import uuid4
-from sqlalchemy.dialects.mysql import UUID
 
 # -----------------------------------------------------------------
 # Enum 타입 정의 (TransactionHistory 테이블에서 사용)

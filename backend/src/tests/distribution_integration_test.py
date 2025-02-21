@@ -11,8 +11,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from src.db.models import ChatRoom, MoneyDistribution, MoneyDistributionDetail, ChatRoomMember, User
 from src.db.database import get_db
-from src.api.spray.service import SprayService
-from src.api.spray.utils import distribute_amount
+from src.api.distribution.service import DistributionService
+from src.api.distribution.utils import distribute_amount
 
 @pytest.fixture(scope="session")
 def event_loop():
@@ -136,7 +136,7 @@ async def test_distribution_integration_flow(
     total_received = sum(item["amount"] for item in received_list)
     assert total_received == expected_received
 
-    # 4. 조회 실패 테스트: 비뿌린 사용자(예: user 4)가 조회하면 403
+    # 4. 조회 실패 테스트: 뿌리지않은 사용자(예: user 4)가 조회하면 403
     headers_non_creator = {"X-USER-ID": "4"}
     non_creator_response = await async_client.get(f"/api/v1/spray/{fresh_spray.token}", headers=headers_non_creator)
     assert non_creator_response.status_code == 403

@@ -4,6 +4,8 @@ class Settings(BaseSettings):
     API_V1_STR: str = "/api/v1"
     PROJECT_NAME: str = "Money-distribution-service"
     DATABASE_URL: str
+    REDIS_HOST: str
+    REDIS_PORT: int
 
     class Config:
         env_file = ".env"

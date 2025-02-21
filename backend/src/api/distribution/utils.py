@@ -1,9 +1,12 @@
 import random
 import string
+from src.utils.token.token import TokenService
+
+_token_service = TokenService()
 
 def generate_token() -> str:
     """3자리 랜덤 토큰 생성"""
-    return ''.join(random.choices(string.ascii_uppercase + string.digits, k=3))
+    return _token_service.generate_token()
 
 def distribute_random_amount(total_amount: int, count: int) -> list[int]:
     """총액을 count만큼 랜덤하게 분배"""

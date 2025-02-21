@@ -3,6 +3,7 @@ from fastapi import HTTPException
 from sqlalchemy import select, and_, update
 from sqlalchemy.ext.asyncio import AsyncSession
 import logging
+from src.utils.token.token import TokenService
 
 from ...db.models import (
     MoneyDistribution,
@@ -21,6 +22,7 @@ logger = logging.getLogger(__name__)
 class SprayService:
     def __init__(self, db: AsyncSession):
         self.db = db
+        self._token_service = TokenService()
 
     async def create_spray(self, user_id: int, room_id: str, total_amount: int, recipient_count: int) -> str:
         # 1. 채팅방 멤버 확인
@@ -38,55 +40,80 @@ class SprayService:
         if not wallet or wallet.balance < total_amount:
             raise HTTPException(status_code=400, detail="잔액이 부족합니다.")
 
-        # 3. 토큰 생성 (중복 방지)
-        while True:
-            token = generate_token()
-            exists = await self.db.execute(
-                select(MoneyDistribution).where(MoneyDistribution.token == token)
-            )
-            if not exists.scalar_one_or_none():
+        try:
+            # 3. 토큰 생성 및 검증
+            while True:
+                # Redis에 토큰 생성 및 저장 시도
+                token = self._token_service.generate_token()
+                
+                # MySQL에서 히스토리 확인
+                distribution_query = select(MoneyDistribution).where(
+                    MoneyDistribution.token == token
+                )
+                distribution = (await self.db.execute(distribution_query)).scalar_one_or_none()
+                
+                if distribution:
+                    # 만료되지 않은 토큰인 경우에만 다시 시도
+                    if datetime.utcnow() <= distribution.created_at + timedelta(minutes=10):
+                        self._token_service.release_token(token)
+                        continue
+                
+                # 토큰 유효성 최종 확인
+                if not self._token_service.validate_token(token):
+                    self._token_service.release_token(token)
+                    continue
+                    
+                # 유효한 토큰을 찾았으면 반복 종료
                 break
 
-        # 4. 금액 분배
-        amounts = distribute_amount(total_amount, recipient_count)
+            # 4. 금액 분배
+            amounts = distribute_amount(total_amount, recipient_count)
 
-        # 5. 뿌리기 건 생성
-        distribution = MoneyDistribution(
-            token=token,
-            creator_id=user_id,
-            chat_room_id=room_id,
-            total_amount=total_amount,
-            recipient_count=recipient_count
-        )
-        self.db.add(distribution)
-        await self.db.flush()  # ID 생성을 위해 flush
-
-        # 6. 분배 내역 생성
-        for amount in amounts:
-            detail = MoneyDistributionDetail(
-                distribution_id=distribution.id,
-                allocated_amount=amount
+            # 5. 뿌리기 건 생성
+            distribution = MoneyDistribution(
+                token=token,
+                creator_id=user_id,
+                chat_room_id=room_id,
+                total_amount=total_amount,
+                recipient_count=recipient_count
             )
-            self.db.add(detail)
+            self.db.add(distribution)
+            await self.db.flush()
 
-        # 7. 거래 내역 기록 및 잔액 차감
-        wallet.balance -= total_amount
-        
-        transaction = TransactionHistory(
-            transaction_type=TransactionType.SPRAY,
-            user_id=user_id,
-            amount=-total_amount,
-            balance_after=wallet.balance,
-            token=token,
-            chat_room_id=room_id,
-            description=f"{recipient_count}명에게 뿌리기",
-            status=TransactionStatus.SUCCESS
-        )
-        
-        self.db.add(transaction)
-        await self.db.commit()
+            # 6. 분배 내역 생성
+            for amount in amounts:
+                detail = MoneyDistributionDetail(
+                    distribution_id=distribution.id,
+                    allocated_amount=amount
+                )
+                self.db.add(detail)
 
-        return token 
+            # 7. 거래 내역 기록 및 잔액 차감
+            wallet.balance -= total_amount
+            
+            transaction = TransactionHistory(
+                transaction_type=TransactionType.SPRAY,
+                user_id=user_id,
+                amount=-total_amount,
+                balance_after=wallet.balance,
+                token=token,
+                chat_room_id=room_id,
+                description=f"{recipient_count}명에게 뿌리기",
+                status=TransactionStatus.SUCCESS
+            )
+            
+            self.db.add(transaction)
+            await self.db.commit()
+
+            return token
+
+        except Exception as e:
+            # 에러 발생시에만 토큰 해제
+            if 'token' in locals():
+                self._token_service.release_token(token)
+            await self.db.rollback()
+            logger.error(f"Error in create_spray: {e}")
+            raise HTTPException(status_code=500, detail="뿌리기 생성에 실패했습니다.")
 
     async def receive_money(self, token: str, user_id: int, room_id: str) -> int:
         """뿌린 금액 받기
