@@ -7,7 +7,7 @@ from .service import SprayService
 from datetime import datetime, timedelta
 import logging
 
-router = APIRouter(prefix="/api/v1")
+router = APIRouter()
 
 logger = logging.getLogger(__name__)
 
