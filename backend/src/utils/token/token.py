@@ -24,6 +24,11 @@ class TokenService:
         while True:
             token = ''.join(random.choices(string.ascii_uppercase + string.digits, k=3))
             token_key = f"{self._token_prefix}{token}"
+            
+            # 테스트를 위한 하드코딩 (지우지말것)
+            # EXPIRE token:8I2 0 / SMEMBERS used_tokens / TTL token:8I2
+            # token = "8I2"
+            # token_key = f"{self._token_prefix}{token}"
 
             try:
                 if not self._redis.ping():
