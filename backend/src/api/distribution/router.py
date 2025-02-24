@@ -6,6 +6,7 @@ from .schema import SprayRequest, SprayResponse, ReceiveRequest, ReceiveResponse
 from .service import SprayService
 from datetime import datetime, timedelta
 import logging
+from ...worker.tasks import process_receive_money
 
 router = APIRouter()
 
@@ -34,33 +35,52 @@ async def receive_money(
     x_user_id: int = Header(...),  # 필수 헤더
     x_room_id: str = Header(...),  # 필수 헤더
     db: AsyncSession = Depends(get_db)
-) -> ReceiveResponse:
+):
     """
-    뿌리기 건에 대한 받기 API
+    돈 받기 요청을 비동기적으로 처리하는 엔드포인트
     
-    Args:
-        request: 토큰 정보를 포함한 요청 객체
-        x_user_id: 요청자 식별 번호 (헤더)
-        x_room_id: 대화방 식별자 (헤더)
-        db: 데이터베이스 세션
-    
-    Returns:
-        받은 금액 정보
-    
-    Raises:
-        HTTPException: 받기 실패 시 발생
+    1. 기본 유효성 검증 수행
+    2. Celery 태스크로 실제 처리 위임
+    3. 처리 결과 반환
     """
     try:
-        spray_service = SprayService(db)
-        received_amount = await spray_service.receive_money(
+        logger.info(f"Received money request - Token: {request.token}, User: {x_user_id}, Room: {x_room_id}")
+        
+        # 기본 검증 (채팅방 멤버십, 토큰 유효성 등)
+        service = SprayService(db)
+        await service.validate_receive_request(
             token=request.token,
             user_id=x_user_id,
             room_id=x_room_id
         )
-        return ReceiveResponse(received_amount=received_amount)
+        logger.info("Request validation passed")
         
+        # Celery 태스크로 실제 처리 위임
+        task_kwargs = {
+            "token": request.token,
+            "user_id": x_user_id,
+            "room_id": x_room_id
+        }
+        
+        # 태스크 실행 및 결과 대기
+        logger.info("Delegating to Celery worker...")
+        task = process_receive_money.apply_async(
+            kwargs=task_kwargs,
+            queue='receive_requests'
+        )
+        
+        # 결과 대기 (최대 10초)
+        result = task.get(timeout=10)
+        logger.info(f"Task completed. Result: {result}")
+        
+        return result  # {"received_amount": amount} 형식으로 반환됨
+            
     except ValueError as e:
+        logger.error(f"Validation error: {str(e)}")
         raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Unexpected error: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 @router.get("/spray/{token}", response_model=SprayStatusResponse)
 async def get_spray_status(

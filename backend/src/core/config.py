@@ -6,6 +6,10 @@ class Settings(BaseSettings):
     DATABASE_URL: str
     REDIS_HOST: str
     REDIS_PORT: int
+    RABBITMQ_HOST: str
+    RABBITMQ_PORT: int
+    RABBITMQ_USER: str
+    RABBITMQ_PASSWORD: str
 
     class Config:
         env_file = ".env"
