@@ -10,7 +10,7 @@ import asyncio
 import logging
 from .celery_app import celery_app
 from ..db.database import async_session_maker
-from ..api.distribution.service import SprayService
+from ..api.distribution.service.receive_service import ReceiveService
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +21,7 @@ def process_receive_money(self, *, token: str, user_id: int, room_id: str) -> di
     
     이 태스크는 다음과 같은 순서로 처리됩니다:
     1. 비동기 DB 세션 생성
-    2. SprayService를 통해 돈 받기 처리 (비관적 락 사용)
+    2. ReceiveService를 통해 돈 받기 처리 (비관적 락 사용)
     3. 처리 결과 반환
     
     Args:
@@ -38,11 +38,11 @@ def process_receive_money(self, *, token: str, user_id: int, room_id: str) -> di
     async def _process():
         async with async_session_maker() as session:
             try:
-                # SprayService 인스턴스 생성
-                spray_service = SprayService(session)
+                # ReceiveService 인스턴스 생성
+                receive_service = ReceiveService(session)
                 
                 # 비관적 락을 사용하여 돈 받기 처리
-                received_amount = await spray_service.receive_money(
+                received_amount = await receive_service.receive_money(
                     token=token,
                     user_id=user_id,
                     room_id=room_id
