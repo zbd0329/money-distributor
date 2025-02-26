@@ -6,12 +6,19 @@ import string
 import pytest
 from httpx import AsyncClient, ASGITransport
 from src.main import app
-from datetime import datetime
+from datetime import datetime, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from src.db.models import ChatRoom, MoneyDistribution, ChatRoomMember, User
+from src.db.models import (
+    ChatRoom,
+    MoneyDistribution,
+    MoneyDistributionDetail,
+    ChatRoomMember,
+    User,
+    UserWallet
+)
 from src.db.database import get_db
-from src.api.spray.service import SprayService
+from src.api.distribution.service.spray_service import SprayService
 from src.api.spray.utils import distribute_amount
 
 @pytest.fixture(scope="session")

@@ -9,10 +9,10 @@ from src.main import app
 from datetime import datetime, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from src.db.models import ChatRoom, MoneyDistribution, MoneyDistributionDetail, ChatRoomMember, User
+from src.db.models import ChatRoom, MoneyDistribution, MoneyDistributionDetail, ChatRoomMember, User, UserWallet
 from src.db.database import get_db
 from src.api.distribution.service import DistributionService
-from src.api.distribution.utils import distribute_amount
+from src.api.distribution.service.spray_service import SprayService
 
 @pytest.fixture(scope="session")
 def event_loop():
@@ -68,7 +68,7 @@ async def fresh_spray(db_session: AsyncSession, test_chat_room: ChatRoom):
     )
     db_session.add(spray)
     await db_session.flush()
-    amounts = distribute_amount(5000, 3)
+    amounts = SprayService.distribute_amount(5000, 3)
     for amt in amounts:
         detail = MoneyDistributionDetail(
             distribution_id=spray.id,
