@@ -154,7 +154,7 @@ class MoneyDistributionDetail(Base):
 class TransactionHistory(Base):
     __tablename__ = "transaction_history"
 
-    id = Column(BigInteger, primary_key=True)
+    id = Column(Integer, primary_key=True, autoincrement=True)
     transaction_type = Column(Enum(TransactionTypeEnum), nullable=False, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     amount = Column(BigInteger, nullable=False)

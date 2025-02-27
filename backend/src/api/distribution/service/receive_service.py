@@ -4,6 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 import logging
 from fastapi import HTTPException
 from ....worker.tasks import process_receive_money
+from fastapi import status
 
 from ....db.models import (
     MoneyDistribution,
@@ -96,9 +97,9 @@ class ReceiveService:
                     MoneyDistributionDetail.distribution_id == distribution.id,
                     MoneyDistributionDetail.receiver_id.is_(None)
                 )
-            ).with_for_update().limit(1)
+            ).order_by(MoneyDistributionDetail.id).with_for_update()
             
-            detail = (await self.db.execute(detail_query)).scalar_one_or_none()
+            detail = (await self.db.execute(detail_query)).scalars().first()
             if not detail:
                 raise ValueError("받을 수 있는 금액이 없습니다.")
 
@@ -169,7 +170,10 @@ class ReceiveService:
         )
         member = await self.db.execute(member_query)
         if not member.scalar_one_or_none():
-            raise ValueError("해당 대화방의 멤버가 아닙니다.")
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="해당 대화방의 멤버가 아닙니다."
+            )
 
         # 2. 뿌리기 건 조회
         distribution_query = select(MoneyDistribution).where(

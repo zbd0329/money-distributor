@@ -10,7 +10,6 @@ import asyncio
 import logging
 from .celery_app import celery_app
 from ..db.database import async_session_maker
-from ..api.distribution.service.receive_service import ReceiveService
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +35,9 @@ def process_receive_money(self, *, token: str, user_id: int, room_id: str) -> di
     logger.info(f"Parameters - Token: {token}, User: {user_id}, Room: {room_id}")
 
     async def _process():
+        # 순환 참조를 피하기 위해 함수 내부에서 import
+        from ..api.distribution.service.receive_service import ReceiveService
+        
         async with async_session_maker() as session:
             try:
                 # ReceiveService 인스턴스 생성

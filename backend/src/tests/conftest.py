@@ -2,6 +2,10 @@ import pytest
 import os
 from unittest.mock import patch
 from pydantic_settings import BaseSettings, SettingsConfigDict
+import asyncio
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy.orm import sessionmaker
+from src.db.models import Base
 
 # ✅ 테스트용 가짜 설정 클래스
 class TestSettings(BaseSettings):
@@ -28,3 +32,34 @@ def mock_settings(monkeypatch):
 
     # ✅ settings 객체 자체를 테스트용 설정으로 교체
     monkeypatch.setattr("src.core.config.settings", test_settings)
+
+# Test database URL
+TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
+
+@pytest.fixture(scope="session")
+def event_loop():
+    loop = asyncio.new_event_loop()
+    yield loop
+    loop.close()
+
+@pytest.fixture
+async def db_session():
+    """비동기 테스트 DB 세션 생성"""
+    engine = create_async_engine(TEST_DATABASE_URL)
+    
+    # Create all tables
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    
+    # Create session
+    async_session = sessionmaker(
+        engine, class_=AsyncSession, expire_on_commit=False
+    )
+    
+    async with async_session() as session:
+        yield session
+        
+    # Cleanup
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.drop_all)
+    await engine.dispose()
