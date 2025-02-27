@@ -76,7 +76,7 @@ class LookupService:
         distribution = (await self.db.execute(query)).scalar_one_or_none()
 
         if not distribution:
-            raise ValueError("존재하지 않는 토큰입니다.")
+            raise ValueError("해당 토큰으로 분배된 내역이 없습니다.")
 
         # 7일 이내 조회 가능 확인
         if datetime.utcnow() > distribution.created_at + timedelta(days=7):
