@@ -196,23 +196,34 @@ async def test_invalid_token(db_session: AsyncSession, mock_token_service):
 
 async def test_multiple_received_details(db_session: AsyncSession, setup_test_data: MoneyDistribution, mock_token_service):
     """여러 건의 수령 내역이 있는 경우의 조회 테스트"""
+    # 추가 사용자 생성 (3, 4번 사용자)
+    for uid in [3, 4]:  # user 3, 4만 생성 (1, 2는 이미 존재)
+        user = User(
+            id=uid,
+            username=f"user{uid}",
+            password="dummy",
+            email=f"user{uid}@example.com"
+        )
+        db_session.add(user)
+    await db_session.commit()
+
     # 3건의 분배 내역 중 2건이 수령된 상황 설정
     details = await db_session.execute(
         select(MoneyDistributionDetail)
         .where(MoneyDistributionDetail.distribution_id == setup_test_data.id)
     )
     details = details.scalars().all()
-    
+
     # 첫 번째 수령: user 2가 500원 수령 (2분 전)
     details[0].receiver_id = 2
     details[0].claimed_at = datetime.utcnow() - timedelta(minutes=2)
     details[0].allocated_amount = 500
-    
+
     # 두 번째 수령: user 3이 1500원 수령 (1분 전)
     details[1].receiver_id = 3
     details[1].claimed_at = datetime.utcnow() - timedelta(minutes=1)
     details[1].allocated_amount = 1500
-    
+
     # 세 번째 건은 미수령 상태로 둠 (1000원)
     await db_session.commit()
 

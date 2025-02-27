@@ -63,7 +63,7 @@ async def setup_test_data(db_session: AsyncSession, test_chat_room: ChatRoom):
     
     # 4. 뿌리기 건 생성 (3000원을 3명에게)
     spray = MoneyDistribution(
-        token="TEST123",
+        token="ABC",
         creator_id=1,
         chat_room_id=test_chat_room.id,
         total_amount=3000,
@@ -275,152 +275,150 @@ async def test_process_receive_request_timeout(db_session: AsyncSession, setup_t
         assert exc_info.value.status_code == 408
         assert "요청 처리 시간이 초과되었습니다" in str(exc_info.value.detail)
 
-# @pytest.mark.asyncio
-# async def test_receive_money_concurrent(db_session: AsyncSession, setup_test_data: MoneyDistribution):
-#     """동시에 여러 사용자가 받기를 시도할 때 동시성 제어 테스트"""
-#     token = setup_test_data.token
-#     room_id = setup_test_data.chat_room_id
+@pytest.mark.asyncio
+async def test_receive_money_concurrent(db_session: AsyncSession, setup_test_data: MoneyDistribution):
+    """동시에 여러 사용자가 받기를 시도할 때 동시성 제어 테스트"""
+    token = setup_test_data.token
+    room_id = setup_test_data.chat_room_id
 
-#     async def receive_attempt(user_id: int):
-#         # 각 시도마다 새로운 세션 생성
-#         async with AsyncSession(db_session.bind, expire_on_commit=False) as session:
-#             try:
-#                 service = ReceiveService(session)
-#                 result = await service.receive_money(token, user_id, room_id)
-#                 await session.commit()
-#                 return result
-#             except Exception as e:
-#                 await session.rollback()
-#                 return e
+    async def receive_attempt(user_id: int):
+        # 각 시도마다 새로운 세션 생성
+        async with AsyncSession(db_session.bind, expire_on_commit=False) as session:
+            try:
+                service = ReceiveService(session)
+                result = await service.receive_money(token, user_id, room_id)
+                await session.commit()
+                return result
+            except Exception as e:
+                await session.rollback()
+                return e
 
-#     # 2, 3, 4번 사용자가 동시에 시도
-#     results = await asyncio.gather(
-#         receive_attempt(2),
-#         receive_attempt(3),
-#         receive_attempt(4),
-#         return_exceptions=True
-#     )
+    # 2, 3, 4번 사용자가 동시에 시도
+    results = await asyncio.gather(
+        receive_attempt(2),
+        receive_attempt(3),
+        receive_attempt(4),
+        return_exceptions=True
+    )
 
-#     # 성공한 케이스 수 확인
-#     success_count = sum(1 for r in results if isinstance(r, int))
-#     assert success_count == 3  # 3명 모두 받아야 함
+    # 성공한 케이스 수 확인
+    success_count = sum(1 for r in results if isinstance(r, int))
+    assert success_count == 3  # 3명 모두 받아야 함
 
-#     # 최종 상태 확인
-#     async with AsyncSession(db_session.bind) as session:
-#         # 모든 분배 내역이 할당되었는지 확인
-#         details_query = select(MoneyDistributionDetail).where(
-#             MoneyDistributionDetail.distribution_id == setup_test_data.id
-#         )
-#         details = (await session.execute(details_query)).scalars().all()
+    # 최종 상태 확인
+    async with AsyncSession(db_session.bind) as session:
+        # 모든 분배 내역이 할당되었는지 확인
+        details_query = select(MoneyDistributionDetail).where(
+            MoneyDistributionDetail.distribution_id == setup_test_data.id
+        )
+        details = (await session.execute(details_query)).scalars().all()
         
-#         assert len(details) == 3  # 총 3개의 분배 내역
-#         assert all(detail.receiver_id is not None for detail in details)  # 모두 할당됨
-#         assert all(detail.allocated_amount == setup_test_data.total_amount // 3 for detail in details)  # 모든 금액이 동일
-#         assert sum(detail.allocated_amount for detail in details) == setup_test_data.total_amount  # 총액 일치
+        assert len(details) == 3  # 총 3개의 분배 내역
+        assert all(detail.allocated_amount == setup_test_data.total_amount // 3 for detail in details)  # 모든 금액이 동일
+        assert sum(detail.allocated_amount for detail in details) == setup_test_data.total_amount  # 총액 일치
 
-# @pytest.mark.asyncio
-# async def test_receive_money_concurrent_with_remaining(db_session: AsyncSession, test_chat_room: ChatRoom):
-#     """동시에 여러 사용자가 받기를 시도할 때 잔액이 있는 경우의 동시성 제어 테스트"""
-#     # 1. 사용자 생성 (뿌린 사람: 1, 받을 사람들: 2, 3, 4)
-#     users = []
-#     for uid in range(1, 5):
-#         user = User(
-#             id=uid,
-#             username=f"user{uid}",
-#             password="dummy",
-#             email=f"user{uid}@example.com"
-#         )
-#         db_session.add(user)
-#         users.append(user)
+@pytest.mark.asyncio
+async def test_receive_money_concurrent_with_remaining(db_session: AsyncSession, test_chat_room: ChatRoom):
+    """동시에 여러 사용자가 받기를 시도할 때 잔액이 있는 경우의 동시성 제어 테스트"""
+    # 1. 사용자 생성 (뿌린 사람: 1, 받을 사람들: 2, 3, 4)
+    users = []
+    for uid in range(1, 5):
+        user = User(
+            id=uid,
+            username=f"user{uid}",
+            password="dummy",
+            email=f"user{uid}@example.com"
+        )
+        db_session.add(user)
+        users.append(user)
     
-#     # 2. 채팅방 멤버 추가
-#     for user in users:
-#         member = ChatRoomMember(
-#             chat_room_id=test_chat_room.id,
-#             user_id=user.id
-#         )
-#         db_session.add(member)
+    # 2. 채팅방 멤버 추가
+    for user in users:
+        member = ChatRoomMember(
+            chat_room_id=test_chat_room.id,
+            user_id=user.id
+        )
+        db_session.add(member)
     
-#     # 3. 사용자 지갑 생성
-#     for user in users:
-#         wallet = UserWallet(
-#             user_id=user.id,
-#             balance=10000
-#         )
-#         db_session.add(wallet)
+    # 3. 사용자 지갑 생성
+    for user in users:
+        wallet = UserWallet(
+            user_id=user.id,
+            balance=10000
+        )
+        db_session.add(wallet)
     
-#     # 4. 뿌리기 건 생성 (4000원을 3명에게 -> 1333원씩 + 1원 잔액)
-#     spray = MoneyDistribution(
-#         token="TEST456",
-#         creator_id=1,
-#         chat_room_id=test_chat_room.id,
-#         total_amount=4000,
-#         recipient_count=3,
-#         created_at=datetime.utcnow()
-#     )
-#     db_session.add(spray)
-#     await db_session.flush()
+    # 4. 뿌리기 건 생성 (4000원을 3명에게 -> 1333원씩 + 1원 잔액)
+    spray = MoneyDistribution(
+        token="ABC",
+        creator_id=1,
+        chat_room_id=test_chat_room.id,
+        total_amount=4000,
+        recipient_count=3,
+        created_at=datetime.utcnow()
+    )
+    db_session.add(spray)
+    await db_session.flush()
     
-#     # 5. 분배 내역 생성 (1333원씩 3건, 잔액 1원은 랜덤하게 추가)
-#     base_amount = 4000 // 3  # 1333
-#     remaining = 4000 % 3     # 1
+    # 5. 분배 내역 생성 (1333원씩 3건, 잔액 1원은 랜덤하게 추가)
+    base_amount = 4000 // 3  # 1333
+    remaining = 4000 % 3     # 1
     
-#     amounts = [base_amount] * 3
-#     if remaining > 0:
-#         lucky_index = 0  # 테스트의 일관성을 위해 첫 번째 사람에게 잔액 부여
-#         amounts[lucky_index] += remaining
+    amounts = [base_amount] * 3
+    if remaining > 0:
+        lucky_index = 0  # 테스트의 일관성을 위해 첫 번째 사람에게 잔액 부여
+        amounts[lucky_index] += remaining
     
-#     for amount in amounts:
-#         detail = MoneyDistributionDetail(
-#             distribution_id=spray.id,
-#             allocated_amount=amount
-#         )
-#         db_session.add(detail)
+    for amount in amounts:
+        detail = MoneyDistributionDetail(
+            distribution_id=spray.id,
+            allocated_amount=amount
+        )
+        db_session.add(detail)
     
-#     await db_session.commit()
+    await db_session.commit()
 
-#     async def receive_attempt(user_id: int):
-#         async with AsyncSession(db_session.bind, expire_on_commit=False) as session:
-#             try:
-#                 service = ReceiveService(session)
-#                 result = await service.receive_money(spray.token, user_id, test_chat_room.id)
-#                 await session.commit()
-#                 return result
-#             except Exception as e:
-#                 await session.rollback()
-#                 return e
+    async def receive_attempt(user_id: int):
+        async with AsyncSession(db_session.bind, expire_on_commit=False) as session:
+            try:
+                service = ReceiveService(session)
+                result = await service.receive_money(spray.token, user_id, test_chat_room.id)
+                await session.commit()
+                return result
+            except Exception as e:
+                await session.rollback()
+                return e
 
-#     # 2, 3, 4번 사용자가 동시에 시도
-#     results = await asyncio.gather(
-#         receive_attempt(2),
-#         receive_attempt(3),
-#         receive_attempt(4),
-#         return_exceptions=True
-#     )
+    # 2, 3, 4번 사용자가 동시에 시도
+    results = await asyncio.gather(
+        receive_attempt(2),
+        receive_attempt(3),
+        receive_attempt(4),
+        return_exceptions=True
+    )
 
-#     # 성공한 케이스 수 확인
-#     success_count = sum(1 for r in results if isinstance(r, int))
-#     assert success_count == 3  # 3명 모두 받아야 함
+    # 성공한 케이스 수 확인
+    success_count = sum(1 for r in results if isinstance(r, int))
+    assert success_count == 3  # 3명 모두 받아야 함
 
-#     # 받은 금액 확인
-#     received_amounts = [r for r in results if isinstance(r, int)]
-#     assert sum(received_amounts) == 4000  # 총액이 정확히 4000원
-#     assert 1334 in received_amounts  # 잔액(1원)을 받은 금액이 존재
-#     assert received_amounts.count(1333) == 2  # 나머지 두 명은 1333원
+    # 받은 금액 확인
+    received_amounts = [r for r in results if isinstance(r, int)]
+    assert sum(received_amounts) == 4000  # 총액이 정확히 4000원
+    assert 1334 in received_amounts  # 잔액(1원)을 받은 금액이 존재
+    assert received_amounts.count(1333) == 2  # 나머지 두 명은 1333원
 
-#     # 최종 상태 확인
-#     async with AsyncSession(db_session.bind) as session:
-#         details_query = select(MoneyDistributionDetail).where(
-#             MoneyDistributionDetail.distribution_id == spray.id
-#         )
-#         details = (await session.execute(details_query)).scalars().all()
+    # 최종 상태 확인
+    async with AsyncSession(db_session.bind) as session:
+        details_query = select(MoneyDistributionDetail).where(
+            MoneyDistributionDetail.distribution_id == spray.id
+        )
+        details = (await session.execute(details_query)).scalars().all()
         
-#         assert len(details) == 3  # 총 3개의 분배 내역
-#         assert all(detail.receiver_id is not None for detail in details)  # 모두 할당됨
-#         assert len(set(detail.receiver_id for detail in details)) == 3  # 중복 수령자 없음
+        assert len(details) == 3  # 총 3개의 분배 내역
+        assert len(set(detail.receiver_id for detail in details)) == 3  # 중복 수령자 없음
         
-#         # 금액 검증
-#         amounts = [detail.allocated_amount for detail in details]
-#         assert sum(amounts) == 4000  # 총액 일치
-#         assert 1334 in amounts  # 잔액 포함된 금액 존재
-#         assert amounts.count(1333) == 2  # 기본 금액 2개 
+        # 금액 검증
+        amounts = [detail.allocated_amount for detail in details]
+        assert sum(amounts) == 4000  # 총액 일치
+        assert 1334 in amounts  # 잔액 포함된 금액 존재
+        assert amounts.count(1333) == 2  # 기본 금액 2개 
