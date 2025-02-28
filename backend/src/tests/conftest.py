@@ -9,9 +9,13 @@ from src.db.models import Base
 
 # 테스트용 가짜 설정 클래스
 class TestSettings(BaseSettings):
-    DATABASE_URL: str
-    REDIS_HOST: str
-    REDIS_PORT: int
+    TEST_DATABASE_URL: str
+    TEST_REDIS_HOST: str
+    TEST_REDIS_PORT: int
+    TEST_RABBITMQ_HOST: str
+    TEST_RABBITMQ_PORT: int
+    TEST_RABBITMQ_USER: str
+    TEST_RABBITMQ_PASSWORD: str
     PROJECT_NAME: str = "Test Project"
     API_V1_STR: str = "/api/v1"
 
@@ -35,9 +39,14 @@ def event_loop():
 @pytest.fixture
 async def db_session():
     """MySQL 테스트 DB 세션 생성"""
-    print(f"Using database URL: {settings.DATABASE_URL}")  # 디버깅을 위해 URL 출력
+    if not settings.TEST_DATABASE_URL or 'test' not in settings.TEST_DATABASE_URL.lower():
+        raise ValueError(
+            "TEST_DATABASE_URL must be set and must contain 'test' in the database name for safety"
+        )
+    
+    print(f"Using test database URL: {settings.TEST_DATABASE_URL}")
     engine = create_async_engine(
-        settings.DATABASE_URL,
+        settings.TEST_DATABASE_URL,
         echo=True,
         pool_pre_ping=True,
         pool_size=5,
@@ -46,8 +55,8 @@ async def db_session():
     
     # Create all tables
     async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.drop_all)  # 기존 테이블 삭제
-        await conn.run_sync(Base.metadata.create_all)  # 새로운 테이블 생성
+        await conn.run_sync(Base.metadata.drop_all)
+        await conn.run_sync(Base.metadata.create_all)
     
     # Create session
     async_session = sessionmaker(

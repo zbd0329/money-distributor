@@ -10,6 +10,13 @@ class Settings(BaseSettings):
     RABBITMQ_PORT: int
     RABBITMQ_USER: str
     RABBITMQ_PASSWORD: str
+    TEST_DATABASE_URL: str
+    TEST_REDIS_HOST: str
+    TEST_REDIS_PORT: int
+    TEST_RABBITMQ_HOST: str
+    TEST_RABBITMQ_PORT: int
+    TEST_RABBITMQ_USER: str
+    TEST_RABBITMQ_PASSWORD: str
 
     class Config:
         env_file = ".env"
