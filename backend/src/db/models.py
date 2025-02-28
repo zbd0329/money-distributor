@@ -12,8 +12,9 @@ from sqlalchemy import (
     CHAR,
 )
 from sqlalchemy.orm import relationship
-from .database import Base
+from .database import Base, generate_uuid
 import enum
+from uuid import uuid4
 
 # -----------------------------------------------------------------
 # Enum 타입 정의 (TransactionHistory 테이블에서 사용)
@@ -88,7 +89,7 @@ class Friend(Base):
 class ChatRoom(Base):
     __tablename__ = "chat_rooms"
 
-    id = Column(String(36), primary_key=True, index=True)
+    id = Column(String(36), primary_key=True, index=True, default=generate_uuid)
     room_name = Column(String(100))
     created_at = Column(DateTime, server_default=func.now())
 
@@ -153,7 +154,7 @@ class MoneyDistributionDetail(Base):
 class TransactionHistory(Base):
     __tablename__ = "transaction_history"
 
-    id = Column(BigInteger, primary_key=True)
+    id = Column(Integer, primary_key=True, autoincrement=True)
     transaction_type = Column(Enum(TransactionTypeEnum), nullable=False, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     amount = Column(BigInteger, nullable=False)

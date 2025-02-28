@@ -21,33 +21,33 @@
 - **API 버전 관리**
   - RESTful API 설계 시 `/api/v1/resource` 형태로 관리
 - **서비스 계층 분리**
-  - Controller (API) / Service (비즈니스 로직) / Repository (DB 접근)
+  - router (API) / service (비즈니스 로직) / repository (DB 접근)
 - **도메인 기반 아키텍처 적용**
-  - FastAPI 프로젝트는 **도메인 중심 아키텍처**를 적용하여 기능별(`user`, `room`, `spray`, `receive`)로 모듈을 나누고, 내부에서 `controller`, `service`, `repository`, `model`을 관리합니다.
+  - FastAPI 프로젝트는 **도메인 중심 아키텍처**를 적용하여 기능별(`user`, `room`, `spray`, `receive`)로 모듈을 나누고, 내부에서 `router`, `service`, `repository`, `model`을 관리합니다.
 
 ### ** back디렉토리 구조 예시**
     src/
     ├── api/
     │   ├── user/           # user 도메인 (회원 관련 기능)
-    │   │   ├── user.controller.py  # API 엔드포인트
+    │   │   ├── user.router.py  # API 엔드포인트
     │   │   ├── user.service.py     # 비즈니스 로직
     │   │   ├── user.repository.py  # DB 접근 계층
     │   │   ├── user.model.py       # SQLAlchemy 모델
     │   │   ├── user.schema.py      # Pydantic 스키마 (데이터 검증)
     │   ├── room/           # room 도메인 (채팅방 관련 기능)
-    │   │   ├── room.controller.py
+    │   │   ├── room.router.py
     │   │   ├── room.service.py
     │   │   ├── room.repository.py
     │   │   ├── room.model.py
     │   │   ├── room.schema.py
     │   ├── spray/          # spray 도메인 (뿌리기 기능)
-    │   │   ├── spray.controller.py
+    │   │   ├── spray.router.py
     │   │   ├── spray.service.py
     │   │   ├── spray.repository.py
     │   │   ├── spray.model.py
     │   │   ├── spray.schema.py
     │   ├── receive/        # receive 도메인 (받기 기능)
-    │   │   ├── receive.controller.py
+    │   │   ├── receive.router.py
     │   │   ├── receive.service.py
     │   │   ├── receive.repository.py
     │   │   ├── receive.model.py
